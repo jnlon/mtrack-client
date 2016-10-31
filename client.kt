@@ -2,8 +2,16 @@ package client
 
 import java.net.Socket
 import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets
+import java.io.BufferedInputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
 import org.json.simple.JSONObject
 import org.json.simple.JSONArray
+import org.json.simple.JSONValue
+
+val HOST = "127.0.0.1"
+val PORT = 9993
 
 class AP(ssid: String, bssid: String) {
   public val ssid = ssid
@@ -49,7 +57,7 @@ fun createToJson(requestedUsername: String) : JSONObject {
   val outerjson = JSONObject()
   val innerjson = JSONObject()
   innerjson.put("username", requestedUsername)
-  outerjson.put("create", innerjson)
+  outerjson.put("Create", innerjson)
   return outerjson
 }
 
@@ -58,7 +66,6 @@ fun updateToJson(appUser: User, updateData: JSONObject) : JSONObject {
   val innerjson = JSONObject()
 
   innerjson.put("id", appUser.id)
-  innerjson.put("username", appUser.name)
   innerjson.putAll(updateData)
   outerjson.put("Update", innerjson)
 
@@ -74,18 +81,18 @@ fun queryLocationToJson(appUser: User, location: String) : JSONObject {
   return outerjson
 }
 
-fun queryUserToJson(appUser: User, targetUser: String) : JSONObject {
+fun queryUsersToJson(appUser: User, targetUsers: Array<String>) : JSONObject {
   val outerjson = JSONObject()
   val innerjson = JSONObject()
   innerjson.put("id", appUser.id)
-  innerjson.put("username", targetUser)
+  innerjson.put("users", targetUsers)
   outerjson.put("Query", innerjson)
   return outerjson
 }
 
 // Don't expect a result back from an update
-fun sendUpdate(host: String, port: Int, updateJson: JSONObject) {
-  val output = Socket(host, port).getOutputStream()
+fun sendJsonNoResponse(host: String, port: Int, updateJson: JSONObject) {
+  val output = DataOutputStream(Socket(host, port).getOutputStream())
   val jsonBytes = updateJson.toString().toByteArray()
   val jsonLengthBytes = ByteBuffer.allocate(4).putInt(0,jsonBytes.size).array()
   output.write(jsonLengthBytes)
@@ -93,9 +100,20 @@ fun sendUpdate(host: String, port: Int, updateJson: JSONObject) {
   output.close()
 }
 
-/*fun sendQueryGetResponse(host: String, port: Int, JSONObject) : JSONObject {
+fun sendJsonWithResponse(host: String, port: Int, updateJson: JSONObject) : String {
   val sock = Socket(host, port)
-}*/
+  val input = DataInputStream(sock.getInputStream())
+  val output = DataOutputStream(sock.getOutputStream())
+  val jsonBytes = updateJson.toString().toByteArray()
+  val jsonLengthBytes = ByteBuffer.allocate(4).putInt(0, jsonBytes.size).array()
+  output.write(jsonLengthBytes)
+  output.write(jsonBytes)
+  val toRead = input.readInt()
+  val readJsonBytes = ByteArray(toRead)
+  input.read(readJsonBytes, 0, toRead)
+  sock.close()
+  return String(readJsonBytes, StandardCharsets.UTF_8)
+}
 
 
 fun main(args: Array<String>) {
@@ -118,7 +136,7 @@ fun main(args: Array<String>) {
       |set user
       |create
       |query location
-      |query username
+      |query users
       |update aps
       |update gps
       |q
@@ -128,29 +146,42 @@ fun main(args: Array<String>) {
   //apsToJson(arrayOf(AP("testssid","testbssid"), AP("123", "456")))
   //gpsToJson(GPS(1.0,2.0))
 
-  var user = User("id000000","username", 0)
+  var appUser = User("id000000","username", 0)
 
   loop@ while (true) {
     when(getline(">")) {
-      "get" -> println("id = '${user.id}', user = '${user.name}'")
-      "set id" -> user = User(getline("id: "), user.name,user.lastUpdated)
-      "set user" -> user = User(user.id, getline("user: "), user.lastUpdated)
+      "get" -> println("id = '${appUser.id}', user = '${appUser.name}'")
+      "set id" -> appUser = User(getline("id: "), appUser.name,appUser.lastUpdated)
+      "set user" -> appUser = User(appUser.id, getline("user: "), appUser.lastUpdated)
       "create" -> {
-        val user = getline("initial username: ")
-      
+        val requestedUser = getline("initial username: ")
+        val createJson = createToJson(requestedUser)
+        println("SEND: ${createJson.toString()}")
+        val createResponse = sendJsonWithResponse(HOST,PORT,createJson)
+        println("RECV: $createResponse")
       }
       "query location" -> {
         val location = getline("location: ")
-        val queryJson = queryLocationToJson(user, location)
-        println(queryJson.toString())
+        val queryJson = queryLocationToJson(appUser, location)
+        println("SEND: ${queryJson.toString()}")
+        val queryResponse = sendJsonWithResponse(HOST,PORT,queryJson)
+        println("RECV: $queryResponse")
       }
-      "query username" -> { }
+      "query users" -> {
+        val numUsers = try {getline("# users: ").toInt()} catch (e: Exception) {0}
+        val users = Array<String>(numUsers, {getline("user: ")})
+        val queryJson = queryUsersToJson(appUser, users)
+        println("SEND: ${queryJson.toString()}")
+        val queryResponse = sendJsonWithResponse(HOST,PORT,queryJson)
+        println("RECV: $queryResponse")
+      }
       "update aps" -> {
-        val num_aps = try {getline("# aps: ").toInt()} catch (e: Exception) {0}
-        val aps = Array<AP>(num_aps, {AP(getline("ssid: "), getline("bssid: "))})
+        val numAps = try {getline("# aps: ").toInt()} catch (e: Exception) {0}
+        val aps = Array<AP>(numAps, {AP(getline("ssid: "), getline("bssid: "))})
         val apsJson = apsToJson(aps)
-        val updateJson = updateToJson(user, apsJson)
-        println(updateJson.toString())
+        val updateJson = updateToJson(appUser, apsJson)
+        println("SEND: ${updateJson.toString()}")
+        sendJsonNoResponse(HOST,PORT,updateJson)
       }
       "update gps" -> {
         val gps = try {
@@ -159,8 +190,9 @@ fun main(args: Array<String>) {
           GPS(0.0,0.0)
         }
         val gpsJson = gpsToJson(gps)
-        val updateJson = updateToJson(user,gpsJson)
-        println(updateJson.toString())
+        val updateJson = updateToJson(appUser,gpsJson)
+        println("SEND: ${updateJson.toString()}")
+        sendJsonNoResponse(HOST,PORT,updateJson)
       }
       "q" -> break@loop
       else -> {printCmds()}
