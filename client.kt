@@ -56,7 +56,7 @@ fun apsToJson(aps: Array<AP>) : JSONObject {
 fun createToJson(requestedUsername: String) : JSONObject {
   val outerjson = JSONObject()
   val innerjson = JSONObject()
-  innerjson.put("username", requestedUsername)
+  innerjson.put("user", requestedUsername)
   outerjson.put("Create", innerjson)
   return outerjson
 }
@@ -100,7 +100,7 @@ fun sendJsonNoResponse(host: String, port: Int, updateJson: JSONObject) {
   output.close()
 }
 
-fun sendJsonWithResponse(host: String, port: Int, updateJson: JSONObject) : String {
+fun sendJsonWithResponse(host: String, port: Int, updateJson: JSONObject) : JSONObject {
   val sock = Socket(host, port)
   val input = DataInputStream(sock.getInputStream())
   val output = DataOutputStream(sock.getOutputStream())
@@ -112,7 +112,8 @@ fun sendJsonWithResponse(host: String, port: Int, updateJson: JSONObject) : Stri
   val readJsonBytes = ByteArray(toRead)
   input.read(readJsonBytes, 0, toRead)
   sock.close()
-  return String(readJsonBytes, StandardCharsets.UTF_8)
+  val jsonString = String(readJsonBytes, StandardCharsets.UTF_8)
+  return (JSONValue.parseWithException(jsonString) as JSONObject)
 }
 
 
@@ -159,6 +160,10 @@ fun main(args: Array<String>) {
         println("SEND: ${createJson.toString()}")
         val createResponse = sendJsonWithResponse(HOST,PORT,createJson)
         println("RECV: $createResponse")
+        val innerjson = createResponse.get("CreateResponse") as JSONObject
+        val newid = if (innerjson.get("id") == null) "none" else innerjson.get("id") as String
+        println("Updated id ${appUser.id} -> $newid")
+        appUser = User(newid, appUser.name, appUser.lastUpdated)
       }
       "query location" -> {
         val location = getline("location: ")
