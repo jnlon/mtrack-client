@@ -1,4 +1,2 @@
-META-INF
-client.jar
-client.class
-client
+build/
+lib/
