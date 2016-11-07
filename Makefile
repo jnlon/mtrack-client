@@ -1,4 +1,4 @@
-SRC = client.kt
+SRC = api.kt client.kt 
 OUT = client.jar
 KTC = kotlinc-jvm
 CLASSPATH = json-simple/json-simple-1.1.1.jar:.
