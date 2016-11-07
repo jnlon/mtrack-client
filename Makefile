@@ -1,15 +1,31 @@
-SRC = api.kt client.kt 
-OUT = client.jar
+PWD=$(shell pwd)
 KTC = kotlinc-jvm
-CLASSPATH = json-simple/json-simple-1.1.1.jar:.
-KOPTS = -include-runtime -cp $(CLASSPATH) -d $(OUT)
-RUNCMD = java -jar $(OUT)
+CLASSPATH = -cp $(PWD)/lib/json-simple/classes/:$(PWD)/build
+KOPTS = -nowarn -include-runtime $(CLASSPATH) -d
+API = api/api.kt
+CLIENT = client/client.kt
+ALLSRC = $(API) $(CLIENT)
 
-$(OUT): $(SRC) Makefile
-	$(KTC) $(SRC) $(KOPTS) 
-	jar -uf $(OUT) -C json-simple/classes/ .
+BUILD = build
+CLIENTOUT = $(BUILD)/client.jar
+APIOUT = $(BUILD)/api.jar
+RUNCMD = java -jar $(CLIENTOUT)
 
-run: $(OUT)
+all: $(CLIENTOUT) ;
+
+$(CLIENTOUT): $(BUILD)
+	$(KTC) $(KOPTS) $(CLIENTOUT) $(ALLSRC)
+
+api: $(BUILD)
+	$(KTC) $(KOPTS) $(APIOUT) $(API) 
+
+run: $(CLIENTOUT)
 	$(RUNCMD)
+
+clean: 
+	rm -r $(BUILD)
+
+$(BUILD):
+	mkdir $(BUILD)
 
 
